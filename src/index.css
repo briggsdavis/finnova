@@ -1,0 +1,35 @@
+@import "tailwindcss";
+@theme { --font-sans: "Manrope Variable", sans-serif; }
+@layer base { button, select { @apply cursor-pointer; } button, a, input, select { @apply focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#486a9e]; } body { @apply m-0 bg-white antialiased; } }
+@layer base {
+ button, a, select { @apply transition duration-150; }
+ button:hover, a:hover { @apply brightness-95; }
+ button:active { @apply scale-[0.98]; }
+ button:hover { @apply shadow-sm; }
+ input:disabled { @apply cursor-default bg-white text-slate-500; }
+}
+/* Native entry motion keeps the dashboard lightweight. */
+@property --chart-reveal { syntax: '<angle>'; initial-value: 360deg; inherits: false; }
+@keyframes donut-wipe { from { --chart-reveal: 0deg; } to { --chart-reveal: 360deg; } }
+@keyframes rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes page-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+.donut-enter { mask-image: conic-gradient(#000 0deg var(--chart-reveal), transparent var(--chart-reveal) 360deg); animation: donut-wipe 850ms ease-out both; }
+.column-enter { transform-origin: bottom; animation: rise 750ms cubic-bezier(.2,.7,.3,1) both; }
+.bar-enter { transform-origin: left; animation: grow 750ms cubic-bezier(.2,.7,.3,1) both; }
+.page-enter { animation: page-in 180ms ease-out both; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+@layer base {
+ select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%2364758b' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+  min-height: 30px;
+ }
+ select[aria-label="Payment status"] { background-image: none; }
+}
+
+/* Keep the chevron inset consistent even on compact selectors. */
+select { padding-right: 30px; }
