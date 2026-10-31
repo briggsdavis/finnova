@@ -1,48 +1,653 @@
-import { useState } from 'react'
-import { DonutChart } from './DonutChart'
-import { AnimatedNumber } from './AnimatedNumber'
-import { Plus, Pencil, Trash2, Check, X } from 'lucide-react'
-import { departments, type YearData } from './mockData'
-const money=(v:number)=>new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v)
-export function AllocationDonut({data}:{data:YearData}){
- return <div className="mx-auto mb-7 max-w-3xl"><DonutChart label="Department allocations" items={departments.map(d=>({name:d.name,value:data.allocations[d._id]||0}))}/></div>
+import { Plus, Pencil, Trash2, Check, X } from "lucide-react"
+import { useState } from "react"
+import { AnimatedNumber } from "./AnimatedNumber"
+import { ChartBar } from "./ChartBar"
+import { DonutChart } from "./DonutChart"
+import { departments, eventNames, type YearData } from "./mockData"
+const money = (v: number) =>
+  new Intl.NumberFormat("en-IE", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(v)
+export function AllocationDonut({ data }: { data: YearData }) {
+  return (
+    <div className="mx-auto mb-7 max-w-3xl">
+      <DonutChart
+        label="Department allocations"
+        items={departments.map((d) => ({ name: d.name, value: data.allocations[d._id] || 0 }))}
+      />
+    </div>
+  )
 }
-export function EventBudgets({data,departmentId,save,editable}:{data:YearData;departmentId:string;save:(d:YearData)=>void;editable:boolean}){
- const d=departments.find(d=>d._id===departmentId)!;const allocated=d.events.reduce((a,e)=>a+(data.eventAllocations?.[`${departmentId}:${e}`]||0),0);const available=data.allocations[departmentId]||0
- return <section className="mt-5 rounded-xl border border-slate-200 p-5"><h2 className="text-sm font-bold">Event budget allocations</h2><p className="mt-2 text-xs text-slate-500">Department budget: {money(available)} · Unassigned: {money(available-allocated)}</p><div className="mt-5 grid gap-4 sm:grid-cols-2">{d.events.map(e=><label key={e} className="flex items-center justify-between gap-3 rounded-lg bg-white p-4 text-xs"><span>{e}</span><input aria-label={`${e} budget allocation`} type="number" min="0" max={available-allocated+(data.eventAllocations?.[`${departmentId}:${e}`]||0)} disabled={!editable} value={data.eventAllocations?.[`${departmentId}:${e}`]||0} onChange={ev=>{const value=Math.max(0,Math.min(Number(ev.target.value),available-allocated+(data.eventAllocations?.[`${departmentId}:${e}`]||0)));save({...data,eventAllocations:{...data.eventAllocations,[`${departmentId}:${e}`]:value}})}} className="w-28 rounded-md border border-slate-200 bg-white p-2"/></label>)}</div></section>
-}
-export function OverviewBreakdowns({data}:{data:YearData}){
- const [view,setView]=useState('Expense categories')
- const types=['Expense categories','Event expenses','Event revenue','Department revenue']
- const groups:Record<string,number>={}
- data.rows.filter(r=>r.type===(view.includes('revenue')?'Revenue':'Expense')).forEach(r=>{const key=view==='Expense categories'?r.name:view==='Department revenue'?departments.find(d=>d._id===r.departmentId)!.name:r.event;if(view.startsWith('Event')&&r.event==='Operations')return;groups[key]=(groups[key]||0)+r.amount})
- const values=Object.entries(groups).sort((a,b)=>b[1]-a[1]);const max=Math.max(...Object.values(groups),1)
- return <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-bold">Income & expense breakdown</h2><div className="my-5 flex flex-wrap gap-2">{types.map(t=><button key={t} onClick={()=>setView(t)} className={`rounded-lg px-3 py-2 text-xs ${view===t?'bg-[#203b69] text-white':'bg-white text-slate-600'}`}>{t}</button>)}</div>{view==='Expense categories'?<CostPie rows={data.rows}/>:<div key={view} className="grid gap-x-10 gap-y-4 md:grid-cols-2">{values.map(([name,value],i)=><div key={name}><div className="mb-2 flex justify-between text-xs"><span>{name}</span><strong><AnimatedNumber value={value}/></strong></div><div className="h-2 rounded-full bg-white"><div className="bar-enter h-full rounded-full" style={{width:`${value/max*100}%`,background:departments[i%departments.length].color}}/></div></div>)}{!values.length&&<p className="text-xs text-slate-400">No entries for this fiscal year.</p>}</div>}</section>
-}
-type Person={_id:string;departmentId:string;email:string;role:string}
-export function Access({role,departmentId}:{role:string;departmentId:string}){
- const [people,setPeople]=useState<Person[]>(()=>{try{return JSON.parse(localStorage.getItem('finova-access')||'[]')}catch{return []}})
- const president=role==='president',board=president||role==='admin'
- const [department,setDepartment]=useState(board?'board':role==='finance'?'finance':departmentId),[email,setEmail]=useState(''),[level,setLevel]=useState('Member'),[editing,setEditing]=useState<string|null>(null),[error,setError]=useState('')
- const options=board?(president&&department==='board'?['Institutional Board','Head','Sub-head','Member']:['Head','Sub-head','Member']):['Member']
- const allowed=(p:Person)=>p.role==='Institutional Board'?president:board||p.role==='Member'
- const save=(next:Person[])=>{setPeople(next);localStorage.setItem('finova-access',JSON.stringify(next))}
- const submit=(e:React.FormEvent)=>{e.preventDefault();setError('');const selected=options.includes(level)?level:options[0];const normalized=email.trim().toLowerCase();if(people.some(p=>p._id!==editing&&p.departmentId===department&&p.email===normalized)){setError('This email already has access to this department.');return}const others=people.filter(p=>p._id!==editing&&p.departmentId===department);if((selected==='Head'&&others.some(p=>p.role==='Head'))||(selected==='Sub-head'&&others.filter(p=>p.role==='Sub-head').length>=2)){setError('Each department can have one head and up to two sub-heads.');return}const person={_id:editing||crypto.randomUUID(),departmentId:department,email:normalized,role:selected};save(editing?people.map(p=>p._id===editing?person:p):[...people,person]);setEmail('');setEditing(null)}
- return <section className="rounded-xl border border-slate-200 bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-bold">{board?'Department access':'Department members'}</h2><p className="mt-2 text-xs text-slate-500">{president?'Appoint Board members, department heads, and sub-heads.':board?'Assign one head and up to two sub-heads per department.':'Manage members within your department.'} Email lists are saved locally.</p></div>{board&&<select aria-label="Access department" value={department} onChange={e=>{setDepartment(e.target.value);setEditing(null);setEmail('');setLevel('Member')}} className="rounded-lg border border-slate-200 p-2 text-xs">{departments.map(d=><option value={d._id} key={d._id}>{d.name}</option>)}</select>}</div><form onSubmit={submit} className="my-6 flex flex-wrap gap-3"><input aria-label="Member email" required type="email" placeholder="name@example.com" value={email} onChange={e=>setEmail(e.target.value)} className="min-w-52 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs"/><select aria-label="Access role" value={options.includes(level)?level:options[0]} onChange={e=>setLevel(e.target.value)} className="rounded-lg border border-slate-200 p-2 text-xs">{options.map(o=><option key={o}>{o}</option>)}</select><button className="flex items-center gap-2 rounded-lg bg-[#203b69] px-4 py-2 text-xs text-white">{editing?<Check size={14}/>:<Plus size={14}/>} {editing?'Save changes':'Add access'}</button>{editing&&<button type="button" onClick={()=>{setEditing(null);setEmail('')}} aria-label="Cancel editing"><X size={16}/></button>}</form>{error&&<p role="alert" className="mb-4 text-xs text-red-600">{error}</p>}<div className="overflow-auto"><table className="w-full text-left text-xs"><thead className="bg-white text-slate-500"><tr><th className="p-3">Email</th><th className="p-3">Role</th><th className="p-3 text-right">Actions</th></tr></thead><tbody>{people.filter(p=>p.departmentId===department).map(p=><tr key={p._id} className="border-b border-slate-100"><td className="p-3">{p.email}</td><td className="p-3">{p.role}</td><td className="p-3">{allowed(p)&&<div className="flex justify-end gap-4"><button aria-label={`Edit ${p.email}`} onClick={()=>{setEditing(p._id);setEmail(p.email);setLevel(p.role)}}><Pencil size={14}/></button><button aria-label={`Delete ${p.email}`} onClick={()=>save(people.filter(x=>x._id!==p._id))}><Trash2 size={14}/></button></div>}</td></tr>)}</tbody></table>{!people.some(p=>p.departmentId===department)&&<p className="py-10 text-center text-xs text-slate-400">No access assigned yet.</p>}</div></section>
+export function EventBudgets({
+  data,
+  departmentId,
+  save,
+  editable,
+}: {
+  data: YearData
+  departmentId: string
+  save: (d: YearData) => void
+  editable: boolean
+}) {
+  const events = eventNames(data, departmentId),
+    available = data.allocations[departmentId] || 0
+  const allocated = events.reduce(
+    (n, e) => n + (data.eventAllocations?.[`${departmentId}:${e}`] || 0),
+    0,
+  )
+  const [error, setError] = useState("")
+  const change = (old: string | null) => {
+    const name = window.prompt(old ? "Edit event name" : "Event name", old || "")?.trim()
+    if (!name || name === old) return
+    if (events.some((e) => e.toLowerCase() === name.toLowerCase())) {
+      setError("An event with that name already exists.")
+      return
+    }
+    const allocations = { ...data.eventAllocations }
+    if (old) {
+      allocations[`${departmentId}:${name}`] = allocations[`${departmentId}:${old}`] || 0
+      delete allocations[`${departmentId}:${old}`]
+    }
+    save({
+      ...data,
+      events: {
+        ...data.events,
+        [departmentId]: old ? events.map((e) => (e === old ? name : e)) : [...events, name],
+      },
+      eventAllocations: allocations,
+      rows: data.rows.map((r) =>
+        r.departmentId === departmentId && r.event === old ? { ...r, event: name } : r,
+      ),
+    })
+    setError("")
+  }
+  return (
+    <section className="rounded-xl border border-slate-200 p-5">
+      <h2 className="text-sm font-bold">Event budget allocations</h2>
+      <p className="my-4 text-sm">
+        Board-assigned department budget: {money(available)} · Unassigned:{" "}
+        {money(available - allocated)}
+      </p>
+      {editable && (
+        <button
+          className="rounded-lg bg-[#203b69] px-4 py-2 text-sm text-white"
+          onClick={() => change(null)}
+        >
+          Add event
+        </button>
+      )}
+      {error && (
+        <p role="alert" className="my-3 text-sm text-red-600">
+          {error}
+        </p>
+      )}
+      <div className="mt-5 space-y-3">
+        {events.map((e) => (
+          <div
+            key={e}
+            className="flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 p-4"
+          >
+            <span className="flex-1">{e}</span>
+            <label className="text-xs">
+              Allocation (€){" "}
+              <input
+                aria-label={`${e} budget allocation`}
+                type="number"
+                min="0"
+                max={Math.max(
+                  0,
+                  available - allocated + (data.eventAllocations?.[`${departmentId}:${e}`] || 0),
+                )}
+                disabled={!editable}
+                value={data.eventAllocations?.[`${departmentId}:${e}`] || 0}
+                onChange={(ev) =>
+                  save({
+                    ...data,
+                    eventAllocations: {
+                      ...data.eventAllocations,
+                      [`${departmentId}:${e}`]: Math.max(
+                        0,
+                        Math.min(
+                          Number(ev.target.value),
+                          available -
+                            allocated +
+                            (data.eventAllocations?.[`${departmentId}:${e}`] || 0),
+                        ),
+                      ),
+                    },
+                  })
+                }
+                className="w-28 rounded border p-2"
+              />
+            </label>
+            {editable && (
+              <>
+                <button onClick={() => change(e)}>Edit</button>
+                <button
+                  className="text-red-700"
+                  onClick={() => {
+                    if (
+                      data.rows.some(
+                        (r) =>
+                          r.departmentId === departmentId && r.event === e && r.type === "Expense",
+                      )
+                    ) {
+                      setError("This event has expenses and cannot be deleted.")
+                      return
+                    }
+                    if (
+                      !window.confirm(
+                        "Are you sure you want to delete this event and all of its information?",
+                      )
+                    )
+                      return
+                    const allocations = { ...data.eventAllocations }
+                    delete allocations[`${departmentId}:${e}`]
+                    save({
+                      ...data,
+                      events: { ...data.events, [departmentId]: events.filter((x) => x !== e) },
+                      eventAllocations: allocations,
+                      rows: data.rows.filter(
+                        (r) => r.departmentId !== departmentId || r.event !== e,
+                      ),
+                    })
+                    setError("")
+                  }}
+                >
+                  Delete
+                </button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
 }
 
-export function CostPie({rows}:{rows:import('./mockData').LedgerRow[]}){
- const groups:Record<string,number>={};rows.filter(r=>r.type==='Expense').forEach(r=>{groups[r.name]=(groups[r.name]||0)+r.amount})
- return <div className="mx-auto max-w-3xl"><DonutChart label="Cost breakdown" items={Object.entries(groups).map(([name,value])=>({name,value}))}/></div>
+export function OverviewBreakdowns({ data }: { data: YearData }) {
+  const [view, setView] = useState("Expense categories")
+  const types = ["Expense categories", "Event expenses", "Event revenue", "Department revenue"]
+  const groups: Record<string, number> = {}
+  data.rows
+    .filter((r) => r.type === (view.includes("revenue") ? "Revenue" : "Expense"))
+    .forEach((r) => {
+      const key =
+        view === "Expense categories"
+          ? r.name
+          : view === "Department revenue"
+            ? departments.find((d) => d._id === r.departmentId)!.name
+            : r.event
+      if (view.startsWith("Event") && r.event === "Operations") return
+      groups[key] = (groups[key] || 0) + r.amount
+    })
+  const values = Object.entries(groups).sort((a, b) => b[1] - a[1])
+  const max = Math.max(...Object.values(groups), 1)
+  return (
+    <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+      <h2 className="text-sm font-bold">Income & expense breakdown</h2>
+      <div className="my-5 flex flex-wrap gap-2">
+        {types.map((t) => (
+          <button
+            key={t}
+            onClick={() => setView(t)}
+            className={`rounded-lg px-3 py-2 text-xs ${view === t ? "bg-[#203b69] text-white" : "bg-white text-slate-600"}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      {view === "Expense categories" ? (
+        <CostPie rows={data.rows} />
+      ) : (
+        <div key={view} className="grid gap-x-10 gap-y-4 md:grid-cols-2">
+          {values.map(([name, value], i) => (
+            <div key={name}>
+              <div className="mb-2 flex justify-between text-xs">
+                <span>{name}</span>
+                <strong>
+                  <AnimatedNumber value={value} />
+                </strong>
+              </div>
+              <div className="h-2 rounded-full bg-white">
+                <ChartBar
+                  title={`${name}: ${money(value)}`}
+                  className="bar-enter h-full rounded-full"
+                  style={{
+                    width: `${(value / max) * 100}%`,
+                    background: departments[i % departments.length].color,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+          {!values.length && (
+            <p className="text-xs text-slate-400">No entries for this fiscal year.</p>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+type Person = { _id: string; departmentId: string; email: string; role: string }
+export function Access({ role, departmentId }: { role: string; departmentId: string }) {
+  const [people, setPeople] = useState<Person[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("finova-access") || "[]")
+    } catch {
+      return []
+    }
+  })
+  const president = role === "president",
+    board = president || role === "admin"
+  const [department, setDepartment] = useState(
+      board ? "board" : role === "finance" ? "finance" : departmentId,
+    ),
+    [email, setEmail] = useState(""),
+    [level, setLevel] = useState("Member"),
+    [editing, setEditing] = useState<string | null>(null),
+    [error, setError] = useState("")
+  const options = board
+    ? president && department === "board"
+      ? ["Institutional Board", "Head", "Sub-head", "Member"]
+      : ["Head", "Sub-head", "Member"]
+    : ["Member"]
+  const allowed = (p: Person) =>
+    p.role === "Institutional Board" ? president : board || p.role === "Member"
+  const save = (next: Person[]) => {
+    setPeople(next)
+    localStorage.setItem("finova-access", JSON.stringify(next))
+  }
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    const selected = options.includes(level) ? level : options[0]
+    const normalized = email.trim().toLowerCase()
+    if (
+      people.some(
+        (p) => p._id !== editing && p.departmentId === department && p.email === normalized,
+      )
+    ) {
+      setError("This email already has access to this department.")
+      return
+    }
+    const others = people.filter((p) => p._id !== editing && p.departmentId === department)
+    if (
+      (selected === "Head" && others.some((p) => p.role === "Head")) ||
+      (selected === "Sub-head" && others.filter((p) => p.role === "Sub-head").length >= 2)
+    ) {
+      setError("Each department can have one head and up to two sub-heads.")
+      return
+    }
+    const person = {
+      _id: editing || crypto.randomUUID(),
+      departmentId: department,
+      email: normalized,
+      role: selected,
+    }
+    save(editing ? people.map((p) => (p._id === editing ? person : p)) : [...people, person])
+    setEmail("")
+    setEditing(null)
+  }
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold">
+            {board ? "Department access" : "Department members"}
+          </h2>
+          <p className="mt-2 text-xs text-slate-500">
+            {president
+              ? "Appoint Board members, department heads, and sub-heads."
+              : board
+                ? "Assign one head and up to two sub-heads per department."
+                : "Manage members within your department."}{" "}
+            Email lists are saved locally.
+          </p>
+        </div>
+        {board && (
+          <select
+            aria-label="Access department"
+            value={department}
+            onChange={(e) => {
+              setDepartment(e.target.value)
+              setEditing(null)
+              setEmail("")
+              setLevel("Member")
+            }}
+            className="rounded-lg border border-slate-200 p-2 text-xs"
+          >
+            {departments.map((d) => (
+              <option value={d._id} key={d._id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      <form onSubmit={submit} className="my-6 flex flex-wrap gap-3">
+        <input
+          aria-label="Member email"
+          required
+          type="email"
+          placeholder="name@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="min-w-52 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs"
+        />
+        <select
+          aria-label="Access role"
+          value={options.includes(level) ? level : options[0]}
+          onChange={(e) => setLevel(e.target.value)}
+          className="rounded-lg border border-slate-200 p-2 text-xs"
+        >
+          {options.map((o) => (
+            <option key={o}>{o}</option>
+          ))}
+        </select>
+        <button className="flex items-center gap-2 rounded-lg bg-[#203b69] px-4 py-2 text-xs text-white">
+          {editing ? <Check size={14} /> : <Plus size={14} />}{" "}
+          {editing ? "Save changes" : "Add access"}
+        </button>
+        {editing && (
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(null)
+              setEmail("")
+            }}
+            aria-label="Cancel editing"
+          >
+            <X size={16} />
+          </button>
+        )}
+      </form>
+      {error && (
+        <p role="alert" className="mb-4 text-xs text-red-600">
+          {error}
+        </p>
+      )}
+      <div className="overflow-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-white text-slate-500">
+            <tr>
+              <th className="p-3">Email</th>
+              <th className="p-3">Role</th>
+              <th className="p-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {people
+              .filter((p) => p.departmentId === department)
+              .map((p) => (
+                <tr key={p._id} className="border-b border-slate-100">
+                  <td className="p-3">{p.email}</td>
+                  <td className="p-3">{p.role}</td>
+                  <td className="p-3">
+                    {allowed(p) && (
+                      <div className="flex justify-end gap-4">
+                        <button
+                          aria-label={`Edit ${p.email}`}
+                          onClick={() => {
+                            setEditing(p._id)
+                            setEmail(p.email)
+                            setLevel(p.role)
+                          }}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          aria-label={`Delete ${p.email}`}
+                          onClick={() => save(people.filter((x) => x._id !== p._id))}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+        {!people.some((p) => p.departmentId === department) && (
+          <p className="py-10 text-center text-xs text-slate-400">No access assigned yet.</p>
+        )}
+      </div>
+    </section>
+  )
 }
 
-export function History({store,departmentId,year}:{store:Record<string,YearData>;departmentId:string;year:string}){
- const [tab,setTab]=useState('Department')
- const department=departments.find(d=>d._id===departmentId)!
- const active=tab==='Department'||!department.events.some(e=>e===tab)?undefined:tab
- const years=Array.from({length:3},(_,i)=>String(Number(year)-3+i))
- const summaries=years.map(y=>{const data=store[y];const rows=data?.rows.filter(r=>r.departmentId===departmentId&&(!active||r.event===active))||[];const budget=active?(data?.eventAllocations?.[`${departmentId}:${active}`]||0):(data?.allocations[departmentId]||0);const revenue=rows.filter(r=>r.type==='Revenue').reduce((a,r)=>a+r.amount,0);const expenses=rows.filter(r=>r.type==='Expense').reduce((a,r)=>a+r.amount,0);return {year:y,budget,revenue,expenses,balance:budget+revenue-expenses,exists:!!data}})
- const fiscal=(y:string)=>`FY${y.slice(2)}/${String(Number(y)+1).slice(2)}`
- const metrics=[{key:'budget',label:'Budget allocation',color:'#203b69'},{key:'revenue',label:'Revenue',color:'#f28b35'},{key:'expenses',label:'Expenses',color:'#3b82f6'},{key:'balance',label:'Surplus / loss',color:'#15965e'}] as const
- return <div className="space-y-6"><div role="tablist" aria-label="History scope" className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">{['Department',...department.events].map(t=><button key={t} role="tab" aria-selected={(active||'Department')===t} onClick={()=>setTab(t)} className={`rounded-lg px-4 py-2.5 text-xs font-semibold ${(active||'Department')===t?'bg-[#203b69] text-white':'text-slate-600 hover:bg-slate-50'}`}>{t}</button>)}</div><section key={`${departmentId}-${tab}-${year}`} className="page-enter overflow-hidden rounded-xl border border-slate-200 bg-white"><h2 className="p-5 text-sm font-bold">{active||department.name} — three-year history</h2><div className="overflow-auto"><table className="w-full whitespace-nowrap text-left text-xs"><thead className="text-slate-500"><tr>{['Fiscal year','Budget allocation','Revenue','Expenses','Surplus / loss'].map(t=><th key={t} className="p-4">{t}</th>)}</tr></thead><tbody>{summaries.map(s=><tr key={s.year} className="border-t border-slate-100"><td className="p-4 font-semibold">{fiscal(s.year)}</td><td className="p-4">{s.exists?money(s.budget):'No data'}</td><td className="p-4 text-orange-600">{s.exists?money(s.revenue):'—'}</td><td className="p-4 text-blue-700">{s.exists?money(s.expenses):'—'}</td><td className={`p-4 font-semibold ${s.balance<0?'text-red-600':'text-emerald-700'}`}>{s.exists?money(s.balance):'—'}</td></tr>)}</tbody></table></div><div className="border-t border-slate-100 p-5"><h3 className="text-sm font-bold">Financial comparison</h3><div className="my-5 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-slate-600">{[...metrics,{key:'loss',label:'Loss',color:'#dc2626'}].map(m=><span key={m.key} className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{background:m.color}}/>{m.key==='balance'?'Surplus':m.label}</span>)}</div>{(()=>{const max=Math.max(1,...summaries.flatMap(s=>metrics.map(m=>Math.abs(s[m.key]))));const ceiling=Math.ceil(max/100)*100;const negative=summaries.some(s=>s.balance<0);const negativeMax=Math.max(0,...summaries.map(s=>-s.balance));const chartHeight=240+(negative?Math.max(40,negativeMax/ceiling*240):0);return <div className="overflow-x-auto"><div className="flex min-w-[480px] gap-3 pb-7 pt-6"><div className="relative w-14 shrink-0 text-right text-[9px] text-slate-400" style={{height:chartHeight}}>{[0,.25,.5,.75,1].map(n=><span key={n} className="absolute right-0 -translate-y-1/2" style={{top:`${(1-n)*240}px`}}>{money(ceiling*n)}</span>)}{negative&&<span className="absolute bottom-0 right-0">−{money(negativeMax)}</span>}</div><div className="relative flex flex-1 justify-around gap-6" style={{height:chartHeight}}>{[0,.25,.5,.75,1].map(n=><div key={n} className="pointer-events-none absolute left-0 right-0 border-t border-dashed border-slate-100" style={{top:`${(1-n)*240}px`}}/>)}{summaries.map(s=><div key={s.year} className="relative flex flex-1 justify-center gap-2">{metrics.map(m=>{const value=s[m.key];const loss=value<0;const height=Math.abs(value)/ceiling*240;return <div key={m.key} className="relative w-full max-w-10" title={`${fiscal(s.year)} · ${loss?'Loss':m.label}: ${money(value)}`}><div className="column-enter absolute w-full rounded-t-sm" style={{height,top:loss?240:240-height,background:loss?'#dc2626':m.color,transformOrigin:loss?'top':'bottom'}}/></div>})}<span className="absolute whitespace-nowrap text-[11px] font-semibold text-slate-500" style={{top:chartHeight+10}}>{fiscal(s.year)}</span></div>)}</div></div></div>})()}</div></section></div>
+export function CostPie({ rows }: { rows: import("./mockData").LedgerRow[] }) {
+  const groups: Record<string, number> = {}
+  rows
+    .filter((r) => r.type === "Expense")
+    .forEach((r) => {
+      groups[r.name] = (groups[r.name] || 0) + r.amount
+    })
+  return (
+    <div className="mx-auto max-w-3xl">
+      <DonutChart
+        label="Cost breakdown"
+        items={Object.entries(groups).map(([name, value]) => ({ name, value }))}
+      />
+    </div>
+  )
+}
+
+export function History({
+  store,
+  departmentId,
+  year,
+}: {
+  store: Record<string, YearData>
+  departmentId: string
+  year: string
+}) {
+  const [tab, setTab] = useState("Department")
+  const department = departments.find((d) => d._id === departmentId)!
+  const active =
+    tab === "Department" ||
+    !["2024", "2025"].some((y) => store[y] && eventNames(store[y], departmentId).includes(tab))
+      ? undefined
+      : tab
+  const years = ["2024", "2025"]
+  const events = Array.from(
+    new Set(years.flatMap((y) => (store[y] ? eventNames(store[y], departmentId) : []))),
+  )
+  const [costYear, setCostYear] = useState("2025")
+  const summaries = years.map((y) => {
+    const data = store[y]
+    const rows =
+      data?.rows.filter(
+        (r) => r.departmentId === departmentId && (!active || r.event === active),
+      ) || []
+    const budget = active
+      ? data?.eventAllocations?.[`${departmentId}:${active}`] || 0
+      : data?.allocations[departmentId] || 0
+    const revenue = rows.filter((r) => r.type === "Revenue").reduce((a, r) => a + r.amount, 0)
+    const expenses = rows.filter((r) => r.type === "Expense").reduce((a, r) => a + r.amount, 0)
+    return {
+      year: y,
+      budget,
+      revenue,
+      expenses,
+      balance: budget + revenue - expenses,
+      exists: !!data,
+    }
+  })
+  const fiscal = (y: string) => `FY${y.slice(2)}/${String(Number(y) + 1).slice(2)}`
+  const metrics = [
+    { key: "budget", label: "Budget allocation", color: "#203b69" },
+    { key: "revenue", label: "Revenue", color: "#f28b35" },
+    { key: "expenses", label: "Expenses", color: "#3b82f6" },
+    { key: "balance", label: "Surplus / loss", color: "#15965e" },
+  ] as const
+  return (
+    <div className="space-y-6">
+      <section className="rounded-xl border border-slate-200 p-5">
+        <h2 className="mb-4 font-bold">Cost breakdown: {active || department.name}</h2>
+        <select
+          aria-label="Cost breakdown year"
+          value={costYear}
+          onChange={(e) => setCostYear(e.target.value)}
+          className="mb-4 rounded border p-2"
+        >
+          {years.map((y) => (
+            <option key={y} value={y}>
+              {fiscal(y)}
+            </option>
+          ))}
+        </select>
+        <CostPie
+          rows={(store[costYear]?.rows || []).filter(
+            (r) => r.departmentId === departmentId && (!active || r.event === active),
+          )}
+        />
+      </section>
+      <div
+        role="tablist"
+        aria-label="History scope"
+        className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2"
+      >
+        {["Department", ...events].map((t) => (
+          <button
+            key={t}
+            role="tab"
+            aria-selected={(active || "Department") === t}
+            onClick={() => setTab(t)}
+            className={`rounded-lg px-4 py-2.5 text-xs font-semibold ${(active || "Department") === t ? "bg-[#203b69] text-white" : "text-slate-600 hover:bg-slate-50"}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      <section
+        key={`${departmentId}-${tab}-${year}`}
+        className="page-enter overflow-hidden rounded-xl border border-slate-200 bg-white"
+      >
+        <h2 className="p-5 text-sm font-bold">{active || department.name} - history</h2>
+        <div className="overflow-auto">
+          <table className="w-full text-left text-xs whitespace-nowrap">
+            <thead className="text-slate-500">
+              <tr>
+                {["Fiscal year", "Budget allocation", "Revenue", "Expenses", "Surplus / loss"].map(
+                  (t) => (
+                    <th key={t} className="p-4">
+                      {t}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {summaries.map((s) => (
+                <tr key={s.year} className="border-t border-slate-100">
+                  <td className="p-4 font-semibold">{fiscal(s.year)}</td>
+                  <td className="p-4">{s.exists ? money(s.budget) : "No data"}</td>
+                  <td className="p-4 text-orange-600">{s.exists ? money(s.revenue) : "-"}</td>
+                  <td className="p-4 text-blue-700">{s.exists ? money(s.expenses) : "-"}</td>
+                  <td
+                    className={`p-4 font-semibold ${s.balance < 0 ? "text-red-600" : "text-emerald-700"}`}
+                  >
+                    {s.exists ? money(s.balance) : "-"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-slate-100 p-5">
+          <h3 className="text-sm font-bold">Financial comparison</h3>
+          <div className="my-5 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-slate-600">
+            {[...metrics, { key: "loss", label: "Loss", color: "#dc2626" }].map((m) => (
+              <span key={m.key} className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: m.color }} />
+                {m.key === "balance" ? "Surplus" : m.label}
+              </span>
+            ))}
+          </div>
+          {(() => {
+            const max = Math.max(
+              1,
+              ...summaries.flatMap((s) => metrics.map((m) => Math.abs(s[m.key]))),
+            )
+            const ceiling = Math.ceil(max / 100) * 100
+            const negative = summaries.some((s) => s.balance < 0)
+            const negativeMax = Math.max(0, ...summaries.map((s) => -s.balance))
+            const chartHeight = 240 + (negative ? Math.max(40, (negativeMax / ceiling) * 240) : 0)
+            return (
+              <div className="overflow-x-auto">
+                <div className="flex min-w-[480px] gap-3 pt-6 pb-7">
+                  <div
+                    className="relative w-14 shrink-0 text-right text-[9px] text-slate-400"
+                    style={{ height: chartHeight }}
+                  >
+                    {[0, 0.25, 0.5, 0.75, 1].map((n) => (
+                      <span
+                        key={n}
+                        className="absolute right-0 -translate-y-1/2"
+                        style={{ top: `${(1 - n) * 240}px` }}
+                      >
+                        {money(ceiling * n)}
+                      </span>
+                    ))}
+                    {negative && (
+                      <span className="absolute right-0 bottom-0">−{money(negativeMax)}</span>
+                    )}
+                  </div>
+                  <div
+                    className="relative flex flex-1 justify-around gap-6"
+                    style={{ height: chartHeight }}
+                  >
+                    {[0, 0.25, 0.5, 0.75, 1].map((n) => (
+                      <div
+                        key={n}
+                        className="pointer-events-none absolute right-0 left-0 border-t border-dashed border-slate-100"
+                        style={{ top: `${(1 - n) * 240}px` }}
+                      />
+                    ))}
+                    {summaries.map((s) => (
+                      <div key={s.year} className="relative flex flex-1 justify-center gap-2">
+                        {metrics.map((m) => {
+                          const value = s[m.key]
+                          const loss = value < 0
+                          const height = (Math.abs(value) / ceiling) * 240
+                          return (
+                            <div
+                              key={m.key}
+                              className="relative w-full max-w-10"
+                              title={`${fiscal(s.year)} · ${loss ? "Loss" : m.label}: ${money(value)}`}
+                            >
+                              <ChartBar
+                                title={`${fiscal(s.year)} · ${loss ? "Loss" : m.label}: ${money(value)}`}
+                                className="column-enter absolute w-full rounded-t-sm"
+                                style={{
+                                  height,
+                                  top: loss ? 240 : 240 - height,
+                                  background: loss ? "#dc2626" : m.color,
+                                  transformOrigin: loss ? "top" : "bottom",
+                                }}
+                              />
+                            </div>
+                          )
+                        })}
+                        <span
+                          className="absolute text-[11px] font-semibold whitespace-nowrap text-slate-500"
+                          style={{ top: chartHeight + 10 }}
+                        >
+                          {fiscal(s.year)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+      </section>
+    </div>
+  )
 }
